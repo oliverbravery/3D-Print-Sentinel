@@ -11,7 +11,7 @@ COPY ./conf /conf
 RUN apt-get update && apt-get install -y libgl1 libgl1-mesa-glx libglib2.0-0 wget
 
 # Download the machine learning model
-RUN wget https://tsd-pub-static.s3.amazonaws.com/ml-models/model-weights-5a6b1be1fa.onnx -o /conf/model/model-weights-5a6b1be1fa.onnx
+RUN wget https://tsd-pub-static.s3.amazonaws.com/ml-models/model-weights-5a6b1be1fa.onnx -O /conf/model/model-weights-5a6b1be1fa.onnx
 
 # Upgrade pip
 RUN pip install --upgrade pip
