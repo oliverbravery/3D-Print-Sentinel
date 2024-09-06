@@ -42,6 +42,7 @@ This setup works on any machine with Docker and Docker Compose installed. If you
    ```bash
    docker compose up --build -d
    ```
+> **Note**: For some unknown reason, to connect to Home Assistant using your Cloudflare domain, you will need to use the app. The web interface will not work, giving the error 'error while loading page ...'.
 ### Additional Raspberry Pi Steps
 In addition to the general Docker setup, the Raspberry Pi requires a few additional steps to optimize performance and enable the machine learning model.
 
