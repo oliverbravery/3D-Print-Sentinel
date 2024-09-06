@@ -37,9 +37,9 @@ services:
         ipv4_address: 172.25.0.4
     environment:
       - ENABLE_MJPG_STREAMER=true
-    device_cgroup_rules:
-      - 'c 166:* rwm'  # Allow access to serial devices (like /dev/ttyACM0)
-      - 'c 81:* rwm'   # Allow access to video devices (like /dev/video0)
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+      - /dev/video0:/dev/video0
 
   appdaemon:
     container_name: appdaemon
