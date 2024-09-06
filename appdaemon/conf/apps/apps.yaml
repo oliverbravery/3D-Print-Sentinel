@@ -1,0 +1,3 @@
+print_detect:
+  module: print_detect
+  class: PrintDetect

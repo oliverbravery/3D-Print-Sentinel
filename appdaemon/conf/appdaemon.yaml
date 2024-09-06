@@ -1,0 +1,10 @@
+appdaemon:
+  time_zone: !secret TIME_ZONE
+  latitude: !secret LATITUDE
+  longitude: !secret LONGITUDE
+  elevation: !secret ELEVATION
+  plugins:
+    HASS:
+      type: hass
+      ha_url: http://homeassistant:8123
+      token: !secret HASS_TOKEN

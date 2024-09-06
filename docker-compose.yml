@@ -1,0 +1,67 @@
+services:
+  homeassistant:
+    container_name: homeassistant
+    build: ./homeassistant
+    volumes:
+        - shared_media:/shared_media
+        - /run/dbus:/run/dbus:ro
+        - homeassistant:/homeassistant
+    restart: unless-stopped
+    networks:
+      homeassistant_network:
+        ipv4_address: 172.25.0.3
+    ports:
+      - 8123:8123
+
+  cloudflared:
+    container_name: cloudflared
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    networks:
+      homeassistant_network:
+        ipv4_address: 172.25.0.2
+
+  octoprint:
+    container_name: octoprint
+    image: octoprint/octoprint
+    restart: unless-stopped
+    ports:
+      - 80:80
+    volumes:
+     - octoprint:/octoprint
+    networks:
+      homeassistant_network:
+        ipv4_address: 172.25.0.4
+    environment:
+      - ENABLE_MJPG_STREAMER=true
+    device_cgroup_rules:
+      - 'c 166:* rwm'  # Allow access to serial devices (like /dev/ttyACM0)
+      - 'c 81:* rwm'   # Allow access to video devices (like /dev/video0)
+
+  appdaemon:
+    container_name: appdaemon
+    build: ./appdaemon
+    volumes:
+      - shared_media:/shared_media
+    env_file: .env
+    restart: unless-stopped
+    networks:
+      homeassistant_network:
+        ipv4_address: 172.25.0.6
+
+volumes:
+  octoprint:
+  shared_media:
+  homeassistant:
+
+networks:
+  homeassistant_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.0.0/29
+          gateway: 172.25.0.1

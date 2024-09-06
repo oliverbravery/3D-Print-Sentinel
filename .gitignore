@@ -1,0 +1,5 @@
+.env
+secrets.yaml
+*.onnx
+.DS_STORE
+__pycache__
