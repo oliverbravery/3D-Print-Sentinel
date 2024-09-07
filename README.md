@@ -76,7 +76,7 @@ It is assumed that you already have a domain set up on Cloudflare.
 5. Choose your own subdomain and domain then in the `Service` dropdown, set the type to `HTTP` and the url to `homeassistant:8123`. Click `Save`.
 The tunnel should now be connected to your domain. 
 
-You can access homeassistant remotely at `https://<subdomain>.<domain>`!
+You can access homeassistant remotely at `https://<subdomain>.<domain>`through any of the home assistant apps! Note: For some reason you have to use the app as you can't access it through a browser using the cloudflare domain.
 
 ## Usage
 - **Home Assistant**: Access the Home Assistant dashboard at `http://localhost:8123` to monitor your 3D prints and manage your smart home devices. If you set up the Cloudflared tunnel, you can access Home Assistant remotely at `https://<subdomain>.<domain>`.
