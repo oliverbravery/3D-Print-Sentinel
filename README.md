@@ -51,7 +51,7 @@ It is highly recommended to use a Raspberry Pi 5 with at least 4GB of RAM for op
 - **Restart octoprint container when printer turns on**: Octoprint does not have functionality to automatically detect and connect to a printer if it loses connection or is turned off. To solve this, we can use these commands to restart the octoprint container when the pi detects a printer is connected:
 ```bash
 sudo nano /etc/udev/rules.d/99-usb-serial.rules # Open the file in the nano text editor
-SUBSYSTEM=="tty", KERNEL=="ttyACM0", ACTION=="add", RUN+="/usr/bin/docker restart octoprint" # Add this line to the file, save and exit
+SUBSYSTEM=="tty", KERNEL=="ttyACM0", ACTION=="add", RUN+="/usr/bin/docker restart octoprint appdaemon" # Add this line to the file, save and exit
 sudo udevadm control --reload-rules && sudo udevadm trigger # Reload the udev rules
 ```
 - **Installing Docker on Pi**: The following commands work to install Docker on a Raspberry Pi (you can follow any other guide if you prefer):
