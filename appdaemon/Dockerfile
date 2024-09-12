@@ -17,7 +17,7 @@ RUN wget https://tsd-pub-static.s3.amazonaws.com/ml-models/model-weights-5a6b1be
 RUN pip install --upgrade pip
 
 # Install the required Python packages
-RUN pip3 install numpy==1.26.4 opencv-python==4.10.0.84 appdaemon==4.4.2 onnxruntime==1.19.2
+RUN pip3 install numpy==1.26.4 opencv-python==4.10.0.84 appdaemon==4.4.2 onnxruntime==1.19.2 pyyaml
 
 # Start the AppDaemon service
 CMD ["appdaemon", "-c", "/conf"]

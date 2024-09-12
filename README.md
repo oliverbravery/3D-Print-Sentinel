@@ -1,6 +1,8 @@
 # 3D-Print-Sentinel
 **3D-Print-Sentinel** is a Docker-based solution that integrates **Home Assistant**, **OctoPrint**, and a custom **AppDaemon** app to automatically monitor 3D prints locally using machine learning. This project also enables secure remote access to Home Assistant via Cloudflared, allowing you to keep track of your prints from anywhere without exposing your local network. This solution can run entirely on a **Raspberry Pi**, making it accessible and easy to set up with minimal hardware requirements.
 
+The machine learning and notification system can be setup as a **standalone service** for those who already have a homeassistant setup. It can be customised via the [config file](/appdaemon/conf/apps/config.ini) to use any entities (such as [Klipper](https://www.klipper3d.org) homeassistant entities) instead of Octoprint entities if that is prefered. See the [standalone setup instructions](#standalone-docker-failure-detection--notification-setup) for more information.
+
 ## Features
 - **Local 3D Print Monitoring**: Uses on-device machine learning to detect potential print errors in real time using the [Obico (Spaghetti Detective)](https://github.com/TheSpaghettiDetective/obico-server/tree/release) model.
 - **Automatic Print Pausing**: If an error is detected, an actionable notification is sent to your phone. If not dismissed within 2 minutes, the print will be automatically stopped.
@@ -12,8 +14,10 @@
 - **Raspberry Pi Compatible**: Designed to run on a Raspberry Pi with minimal hardware requirements (including the machine learning).
 
 ## Setup Guide
-### Docker Setup (General)
-This setup works on any machine with Docker and Docker Compose installed. If you are using a Raspberry Pi, follow the specific setup guide below.
+- [Full Docker Setup](#full-docker-setup-homeassistant-octoprint--appdaemon)
+- [Standalone Docker Setup](#standalone-docker-failure-detection--notification-setup)
+### Full Docker Setup (HomeAssistant, Octoprint & Appdaemon)
+This setup works on any machine with Docker and Docker Compose installed. If you are using a Raspberry Pi, follow the specific setup guide below. 
 
 1. Clone this repository:
    ```bash
@@ -33,6 +37,7 @@ This setup works on any machine with Docker and Docker Compose installed. If you
 6. Create a `secrets.yaml` file in the `appdaemon/conf` directory following this template, where `HASS_TOKEN` is the long-lived access token obtained in the previous step:
    ```
    HASS_TOKEN: <the HASS long-lived access token>
+   HASS_HOSTNAME: <the HASS hostname (e.g. http://homeassistant:8123)>
    LATITUDE: <your latitude>
    LONGITUDE: <your longitude>
    ELEVATION: <your elevation>
@@ -43,6 +48,37 @@ This setup works on any machine with Docker and Docker Compose installed. If you
    docker compose up --build -d
    ```
 > **Note**: For some unknown reason, to connect to Home Assistant using your Cloudflare domain, you will need to use the app. The web interface will not work, giving the error 'error while loading page ...'.
+
+### Standalone Docker Failure Detection & Notification Setup
+The following setup shows how to install and setup just the failure detection and notification (Appdaemon) service to be connected with a HomeAssistant instance.
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/oliverbravery/3D-Print-Sentinel.git
+   cd 3D-Print-Sentinel
+   ```
+2. Obtain from the Home Assistant UI a long-lived access token for the AppDaemon integration. Go to your profile, then `Long-Lived Access Tokens`, and create a new token. 
+3. In your homeassistant `configuration.yaml` file include these lines to ensure the camera snapshots are accessible:
+   ```yaml
+   homeassistant:
+   media_dirs:
+      local: /media
+   ```
+4. Create a `secrets.yaml` file in the `appdaemon/conf` directory following this template, where `HASS_TOKEN` is the long-lived access token obtained in the previous step:
+   ```
+   HASS_TOKEN: <the HASS long-lived access token>
+   HASS_HOSTNAME: <the HASS hostname (e.g. http://homeassistant:8123)>
+   LATITUDE: <your latitude>
+   LONGITUDE: <your longitude>
+   ELEVATION: <your elevation>
+   TIME_ZONE: <your time zone (e.g. GMT)>
+   ```
+5. Edit the configuration file at [`appdaemon/conf/apps/config.ini`](/appdaemon/conf/apps/config.ini) with your desired configuration variables. The default configuration of the file is for an Octoprint setup. More information on the configuration file can be found [here](/docs/CONFIG_FILE.md).
+6. Run the container using the following command:
+   ```bash
+   docker compose up --build appdaemon -d
+   ```
+
 ### Additional Raspberry Pi Steps
 In addition to the general Docker setup, the Raspberry Pi requires a few additional steps to optimize performance and enable the machine learning model.
 

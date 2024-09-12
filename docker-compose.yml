@@ -3,7 +3,6 @@ services:
     container_name: homeassistant
     build: ./homeassistant
     volumes:
-        - shared_media:/shared_media
         - /run/dbus:/run/dbus:ro
         - homeassistant:/homeassistant
     restart: unless-stopped
@@ -44,8 +43,6 @@ services:
   appdaemon:
     container_name: appdaemon
     build: ./appdaemon
-    volumes:
-      - shared_media:/shared_media
     env_file: .env
     restart: unless-stopped
     networks:
@@ -54,7 +51,6 @@ services:
 
 volumes:
   octoprint:
-  shared_media:
   homeassistant:
 
 networks:
