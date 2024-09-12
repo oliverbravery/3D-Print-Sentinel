@@ -35,6 +35,9 @@ class PrintDetect(ad.ADBase):
         self.extruder_target_temp_sensor = self.adapi.get_entity(self.extruder_target_temp_sensor_entity) # get the extruder target temperature sensor
         self.net_main_1 = load_net(self.model_cfg, self.model_meta, self.model_weights) # load the ml model
         
+        if self.notification_on_warp_up and (self.extruder_temp_sensor is None or self.extruder_target_temp_sensor is None):
+            raise RuntimeError("Invalid Config File. ExtruderTempSensor and ExtruderTargetTempSensor must be defined if NotifyOnWarmup is True.")
+        
         self.adapi.run_every(self.run_every_c, "now", self.detection_interval) # run the detection every x seconds
         self.adapi.listen_event(self.handle_action, "mobile_app_notification_action") # listen for mobile app notification actions (e.g. stop print or dismiss)
         
