@@ -114,7 +114,46 @@ class PrintDetect(ad.ADBase):
         arr = np.asarray(bytearray(response.raw.read()), dtype=np.uint8)
         cv2_img = cv2.imdecode(arr, -1)
         return cv2_img
-        
+    
+    def perform_detection(self) -> int:
+        """
+        Take a snapshot of the print job and run the detection model on the image.
+
+        Returns:
+            int: The number of issues detected. 0 if a snapshot could not be taken.
+        """
+        self.print_camera.call_service("snapshot", filename="/media/snapshot.jpg")
+        custom_image_bgr = self.get_camera_snapshot()
+        if custom_image_bgr is None:
+            self.adapi.log("Failed to get camera snapshot, skipping detection for this cycle.")
+            return 0
+        detections = detect(self.net_main_1, custom_image_bgr, thresh=self.detection_threshold, nms=self.detection_nms)
+        detection_count = len(detections)
+        self.adapi.log(f"Detected {detection_count} issues")
+        return detection_count
+    
+    def send_detection_notification_and_countdown(self):
+        """
+        Send a notification to the user that an issue has been detected and start the countdown to stop the print job.
+        """
+        self.adapi.call_service("notify/notify", message=f"An issue with your 3D print has been detected. The print will be stopped in {self.print_termination_time} seconds if not dismissed.", 
+                                title="3D Print Issue Detected",
+                                data={
+                                    "image": "/media/local/snapshot.jpg",
+                                    "actions": [
+                                        {
+                                            "action": "STOP_PRINT_JOB",
+                                            "title": "Stop Print"
+                                        },
+                                        {
+                                            "action": "DISMISS_NOTIFICATION",
+                                            "title": "Dismiss"
+                                        }
+                                    ],
+                                    "push": {
+                                        "interruption-level": "critical"
+                                    }})
+        self.cancel_handle = self.adapi.run_in(self.cancel_print_callback, self.print_termination_time)
         
     def run_every_c(self, cb_args):
         '''
@@ -124,36 +163,11 @@ class PrintDetect(ad.ADBase):
         # check if the printer is on and a notification has not already been sent
         if self.printer_status.is_state(self.printer_printing_state) and self.cancel_handle == None:
             # if the printer is on, take a snapshot and run the detection model
-            self.print_camera.call_service("snapshot", filename="/media/snapshot.jpg")
-            custom_image_bgr = self.get_camera_snapshot()
-            if custom_image_bgr is None:
-                self.adapi.log("Failed to get camera snapshot, skipping detection for this cycle.")
-                return None
-            detections = detect(self.net_main_1, custom_image_bgr, thresh=self.detection_threshold, nms=self.detection_nms)
-            detection_count = len(detections)
-            self.adapi.log(f"Detected {detection_count} issues")
+            detection_count = self.perform_detection()
             # if an issue is detected, send a notification
             if detection_count > 1:
-                self.adapi.call_service("notify/notify", message=f"An issue with your 3D print has been detected. The print will be stopped in {self.print_termination_time} seconds if not dismissed.", 
-                                        title="3D Print Issue Detected",
-                                        data={
-                                            "image": "/media/local/snapshot.jpg",
-                                            "actions": [
-                                                {
-                                                    "action": "STOP_PRINT_JOB",
-                                                    "title": "Stop Print"
-                                                },
-                                                {
-                                                    "action": "DISMISS_NOTIFICATION",
-                                                    "title": "Dismiss"
-                                                }
-                                            ],
-                                            "push": {
-                                                "interruption-level": "critical"
-                                            }})
-                # start the timer to stop the print job in x minutes if not dismissed
-                self.cancel_handle = self.adapi.run_in(self.cancel_print_callback, self.print_termination_time)
-            
+                self.send_detection_notification_and_countdown()
+
     def handle_action(self, event_name, data, kwargs):
         '''
         This is a routing function called when a mobile app notification action is received.
