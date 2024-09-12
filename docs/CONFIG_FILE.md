@@ -20,3 +20,12 @@ The `[program.timings]` section contains the configuration variables for the tim
 The `[model.detection]` section contains the configuration variables for the machine learning model used to detect failures. These variables are used to configure the model inference process and can be used to fine-tune the model's performance. The following variables are available in this section:
 - **Threshold**: The threshold value for the model's predictions. If the model predicts a probability of failure greater than this value, a failure is detected. This variable defaults to `0.25`.
 - **NMS**: The Non-Maximum Suppression (NMS) threshold for the model's predictions. Used to filter out duplicate predictions. This variable defaults to `0.4`.
+
+## [notifications.config] Section
+The `[notifications.config]` section contains the configuration variables for the notifications sent by the app. The following variables are available in this section:
+- **NotifyOnWarmup**: Whether to send a notification when the extruder starts up. This variable defaults to `True`.
+
+## [notifications.entities] Section
+The `[notifications.entities]` section contains the configuration variables for the entities used in the notifications. These variables are used to configure the entities that the app will use to send notifications. The following variables are available in this section:
+- **ExtruderTempSensor**: The entity ID of the sensor that measures the extruder temperature. Only used if `NotifyOnWarmup` is `True`. This variable defaults to the Octoprint sensor `sensor.octoprint_actual_tool0_temp`.
+- **ExtruderTargetTempSensor**: The entity ID of the sensor that measures the target extruder temperature. Only used if `NotifyOnWarmup` is `True`. This variable defaults to the Octoprint sensor `sensor.octoprint_target_tool0_temp`.
