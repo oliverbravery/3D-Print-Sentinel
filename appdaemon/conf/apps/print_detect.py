@@ -31,6 +31,8 @@ class PrintDetect(ad.ADBase):
         self.printer_status = self.adapi.get_entity(self.printer_status_entity) # get the printer status
         self.print_camera = self.adapi.get_entity(self.printer_camera_entity) # get the camera
         self.stop_print_button = self.adapi.get_entity(self.printer_stop_button_entity) # get the stop print button
+        self.extruder_temp_sensor = self.adapi.get_entity(self.extruder_temp_sensor_entity) # get the extruder temperature sensor
+        self.extruder_target_temp_sensor = self.adapi.get_entity(self.extruder_target_temp_sensor_entity) # get the extruder target temperature sensor
         self.net_main_1 = load_net(self.model_cfg, self.model_meta, self.model_weights) # load the ml model
         
         self.adapi.run_every(self.run_every_c, "now", self.detection_interval) # run the detection every x seconds
@@ -56,8 +58,6 @@ class PrintDetect(ad.ADBase):
         value = config[group][id] or config['DEFAULT'][id]
         try:
             value = type(value)
-            if value == None:
-                raise ValueError
             return value
         except ValueError:
             raise RuntimeError(f"Invalid Config File. {group} {id} must be of type {type}.")
@@ -94,7 +94,12 @@ class PrintDetect(ad.ADBase):
                                                                 id='Threshold', type=float)
         self.detection_nms: float = PrintDetect.get_config_value(config=config, group='model.detection', 
                                                                 id='NMS', type=float)
-        print(f"DEBUG: {self.printer_status_entity}, {self.printer_printing_state}, {self.printer_camera_entity}, {self.printer_stop_button_entity}, {self.detection_interval}, {self.print_termination_time}, {self.detection_threshold}, {self.detection_nms}")
+        self.extruder_temp_sensor_entity: str = PrintDetect.get_config_value(config=config, group='notifications.entities', 
+                                                                id='ExtruderTempSensor', type=str)
+        self.extruder_target_temp_sensor_entity: str = PrintDetect.get_config_value(config=config, group='notifications.entities', 
+                                                                id='ExtruderTargetTempSensor', type=str)
+        self.notification_on_warp_up: bool = True if PrintDetect.get_config_value(config=config, group='notifications.config',
+                                                                id='NotifyOnWarmup', type=str) == 'True' else False
         
     def get_camera_snapshot(self):
         """
@@ -155,6 +160,25 @@ class PrintDetect(ad.ADBase):
                                     }})
         self.cancel_handle = self.adapi.run_in(self.cancel_print_callback, self.print_termination_time)
         
+    def notify_on_warmup(self):
+        """
+        Notify the user when the printer is almost warmed up
+        """
+        if self.extruder_temp_sensor.state < 0.9 * self.extruder_target_temp_sensor.state:
+            self.adapi.call_service("notify/notify", 
+                                    message="The 3D printer has almost warmed up. Remove any excess filament before your print starts.", 
+                                    title="3D Printer Warming Up",
+                                    data={
+                                        "image": "/media/local/snapshot.jpg"
+                                    })
+        
+    def extra_notifications_router(self):
+        """
+        Check if extra notifications are needed.
+        """
+        if self.notification_on_warp_up:
+            self.notify_on_warmup()
+        
     def run_every_c(self, cb_args):
         '''
         This function is called every x seconds to take a snapshot of the print job and run the detection model.
@@ -162,6 +186,8 @@ class PrintDetect(ad.ADBase):
         '''
         # check if the printer is on and a notification has not already been sent
         if self.printer_status.is_state(self.printer_printing_state) and self.cancel_handle == None:
+            # call the extra notifications router to check if any extra notifications are needed
+            self.extra_notifications_router()
             # if the printer is on, take a snapshot and run the detection model
             detection_count = self.perform_detection()
             # if an issue is detected, send a notification
