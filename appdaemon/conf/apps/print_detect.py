@@ -31,7 +31,12 @@ class PrintDetect(ad.ADBase):
         self.printer_status = self.adapi.get_entity(self.printer_status_entity) # get the printer status
         self.print_camera = self.adapi.get_entity(self.printer_camera_entity) # get the camera
         self.stop_print_button = self.adapi.get_entity(self.printer_stop_button_entity) # get the stop print button
+        self.extruder_temp_sensor = self.adapi.get_entity(self.extruder_temp_sensor_entity) # get the extruder temperature sensor
+        self.extruder_target_temp_sensor = self.adapi.get_entity(self.extruder_target_temp_sensor_entity) # get the extruder target temperature sensor
         self.net_main_1 = load_net(self.model_cfg, self.model_meta, self.model_weights) # load the ml model
+        
+        if self.notification_on_warp_up and (self.extruder_temp_sensor is None or self.extruder_target_temp_sensor is None):
+            raise RuntimeError("Invalid Config File. ExtruderTempSensor and ExtruderTargetTempSensor must be defined if NotifyOnWarmup is True.")
         
         self.adapi.run_every(self.run_every_c, "now", self.detection_interval) # run the detection every x seconds
         self.adapi.listen_event(self.handle_action, "mobile_app_notification_action") # listen for mobile app notification actions (e.g. stop print or dismiss)
@@ -56,8 +61,6 @@ class PrintDetect(ad.ADBase):
         value = config[group][id] or config['DEFAULT'][id]
         try:
             value = type(value)
-            if value == None:
-                raise ValueError
             return value
         except ValueError:
             raise RuntimeError(f"Invalid Config File. {group} {id} must be of type {type}.")
@@ -94,7 +97,12 @@ class PrintDetect(ad.ADBase):
                                                                 id='Threshold', type=float)
         self.detection_nms: float = PrintDetect.get_config_value(config=config, group='model.detection', 
                                                                 id='NMS', type=float)
-        print(f"DEBUG: {self.printer_status_entity}, {self.printer_printing_state}, {self.printer_camera_entity}, {self.printer_stop_button_entity}, {self.detection_interval}, {self.print_termination_time}, {self.detection_threshold}, {self.detection_nms}")
+        self.extruder_temp_sensor_entity: str = PrintDetect.get_config_value(config=config, group='notifications.entities', 
+                                                                id='ExtruderTempSensor', type=str)
+        self.extruder_target_temp_sensor_entity: str = PrintDetect.get_config_value(config=config, group='notifications.entities', 
+                                                                id='ExtruderTargetTempSensor', type=str)
+        self.notification_on_warp_up: bool = True if PrintDetect.get_config_value(config=config, group='notifications.config',
+                                                                id='NotifyOnWarmup', type=str) == 'True' else False
         
     def get_camera_snapshot(self):
         """
@@ -114,7 +122,65 @@ class PrintDetect(ad.ADBase):
         arr = np.asarray(bytearray(response.raw.read()), dtype=np.uint8)
         cv2_img = cv2.imdecode(arr, -1)
         return cv2_img
+    
+    def perform_detection(self) -> int:
+        """
+        Take a snapshot of the print job and run the detection model on the image.
+
+        Returns:
+            int: The number of issues detected. 0 if a snapshot could not be taken.
+        """
+        self.print_camera.call_service("snapshot", filename="/media/snapshot.jpg")
+        custom_image_bgr = self.get_camera_snapshot()
+        if custom_image_bgr is None:
+            self.adapi.log("Failed to get camera snapshot, skipping detection for this cycle.")
+            return 0
+        detections = detect(self.net_main_1, custom_image_bgr, thresh=self.detection_threshold, nms=self.detection_nms)
+        detection_count = len(detections)
+        self.adapi.log(f"Detected {detection_count} issues")
+        return detection_count
+    
+    def send_detection_notification_and_countdown(self):
+        """
+        Send a notification to the user that an issue has been detected and start the countdown to stop the print job.
+        """
+        self.adapi.call_service("notify/notify", message=f"An issue with your 3D print has been detected. The print will be stopped in {self.print_termination_time} seconds if not dismissed.", 
+                                title="3D Print Issue Detected",
+                                data={
+                                    "image": "/media/local/snapshot.jpg",
+                                    "actions": [
+                                        {
+                                            "action": "STOP_PRINT_JOB",
+                                            "title": "Stop Print"
+                                        },
+                                        {
+                                            "action": "DISMISS_NOTIFICATION",
+                                            "title": "Dismiss"
+                                        }
+                                    ],
+                                    "push": {
+                                        "interruption-level": "critical"
+                                    }})
+        self.cancel_handle = self.adapi.run_in(self.cancel_print_callback, self.print_termination_time)
         
+    def notify_on_warmup(self):
+        """
+        Notify the user when the printer is almost warmed up
+        """
+        if self.extruder_temp_sensor.state < 0.9 * self.extruder_target_temp_sensor.state:
+            self.adapi.call_service("notify/notify", 
+                                    message="The 3D printer has almost warmed up. Remove any excess filament before your print starts.", 
+                                    title="3D Printer Warming Up",
+                                    data={
+                                        "image": "/media/local/snapshot.jpg"
+                                    })
+        
+    def extra_notifications_router(self):
+        """
+        Check if extra notifications are needed.
+        """
+        if self.notification_on_warp_up:
+            self.notify_on_warmup()
         
     def run_every_c(self, cb_args):
         '''
@@ -123,37 +189,14 @@ class PrintDetect(ad.ADBase):
         '''
         # check if the printer is on and a notification has not already been sent
         if self.printer_status.is_state(self.printer_printing_state) and self.cancel_handle == None:
+            # call the extra notifications router to check if any extra notifications are needed
+            self.extra_notifications_router()
             # if the printer is on, take a snapshot and run the detection model
-            self.print_camera.call_service("snapshot", filename="/media/snapshot.jpg")
-            custom_image_bgr = self.get_camera_snapshot()
-            if custom_image_bgr is None:
-                self.adapi.log("Failed to get camera snapshot, skipping detection for this cycle.")
-                return None
-            detections = detect(self.net_main_1, custom_image_bgr, thresh=self.detection_threshold, nms=self.detection_nms)
-            detection_count = len(detections)
-            self.adapi.log(f"Detected {detection_count} issues")
+            detection_count = self.perform_detection()
             # if an issue is detected, send a notification
             if detection_count > 1:
-                self.adapi.call_service("notify/notify", message=f"An issue with your 3D print has been detected. The print will be stopped in {self.print_termination_time} seconds if not dismissed.", 
-                                        title="3D Print Issue Detected",
-                                        data={
-                                            "image": "/media/local/snapshot.jpg",
-                                            "actions": [
-                                                {
-                                                    "action": "STOP_PRINT_JOB",
-                                                    "title": "Stop Print"
-                                                },
-                                                {
-                                                    "action": "DISMISS_NOTIFICATION",
-                                                    "title": "Dismiss"
-                                                }
-                                            ],
-                                            "push": {
-                                                "interruption-level": "critical"
-                                            }})
-                # start the timer to stop the print job in x minutes if not dismissed
-                self.cancel_handle = self.adapi.run_in(self.cancel_print_callback, self.print_termination_time)
-            
+                self.send_detection_notification_and_countdown()
+
     def handle_action(self, event_name, data, kwargs):
         '''
         This is a routing function called when a mobile app notification action is received.
