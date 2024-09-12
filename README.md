@@ -58,7 +58,13 @@ The following setup shows how to install and setup just the failure detection an
    cd 3D-Print-Sentinel
    ```
 2. Obtain from the Home Assistant UI a long-lived access token for the AppDaemon integration. Go to your profile, then `Long-Lived Access Tokens`, and create a new token. 
-3. Create a `secrets.yaml` file in the `appdaemon/conf` directory following this template, where `HASS_TOKEN` is the long-lived access token obtained in the previous step:
+3. In your homeassistant `configuration.yaml` file include these lines to ensure the camera snapshots are accessible:
+   ```yaml
+   homeassistant:
+   media_dirs:
+      local: /media
+   ```
+4. Create a `secrets.yaml` file in the `appdaemon/conf` directory following this template, where `HASS_TOKEN` is the long-lived access token obtained in the previous step:
    ```
    HASS_TOKEN: <the HASS long-lived access token>
    HASS_HOSTNAME: <the HASS hostname (e.g. http://homeassistant:8123)>
@@ -67,8 +73,8 @@ The following setup shows how to install and setup just the failure detection an
    ELEVATION: <your elevation>
    TIME_ZONE: <your time zone (e.g. GMT)>
    ```
-4. Edit the configuration file at [`appdaemon/conf/apps/config.ini`](/appdaemon/conf/apps/config.ini) with your desired configuration variables. The default configuration of the file is for an Octoprint setup. More information on the configuration file can be found [here](/docs/CONFIG_FILE.md).
-5. Run the container using the following command:
+5. Edit the configuration file at [`appdaemon/conf/apps/config.ini`](/appdaemon/conf/apps/config.ini) with your desired configuration variables. The default configuration of the file is for an Octoprint setup. More information on the configuration file can be found [here](/docs/CONFIG_FILE.md).
+6. Run the container using the following command:
    ```bash
    docker compose up --build appdaemon -d
    ```
