@@ -2,6 +2,10 @@ import adbase as ad
 from lib.detection_model import *
 import cv2
 from configparser import ConfigParser
+import requests
+import yaml
+import os
+import numpy as np
 
 class PrintDetect(ad.ADBase):
     '''
@@ -22,6 +26,7 @@ class PrintDetect(ad.ADBase):
         
         # load all configuration file variables
         self.load_config()
+        self.load_secret_values()
         
         self.printer_status = self.adapi.get_entity(self.printer_status_entity) # get the printer status
         self.print_camera = self.adapi.get_entity(self.printer_camera_entity) # get the camera
@@ -49,16 +54,30 @@ class PrintDetect(ad.ADBase):
             any: The value.
         """
         value = config[group][id] or config['DEFAULT'][id]
-        if isinstance(value, type):
+        try:
+            value = type(value)
+            if value == None:
+                raise ValueError
             return value
-        raise RuntimeError("Invalid Config File")
+        except ValueError:
+            raise RuntimeError(f"Invalid Config File. {group} {id} must be of type {type}.")
         
+    def load_secret_values(self) -> None:
+        """
+        Load the secret values from the secrets.yaml file needed for requesting the camera snapshot.
+        """
+        secrets_path = os.path.join(os.path.dirname(__file__), '..', 'secrets.yaml')
+        with open(secrets_path, 'r') as file:
+            secrets = yaml.safe_load(file)
+        self.hass_token = secrets.get('HASS_TOKEN')
+        self.hass_hostname = secrets.get('HASS_HOSTNAME')
+    
     def load_config(self):
         """
         Loads the variables from the config file.
         """
         config = ConfigParser()
-        config.read('config.ini')
+        config.read(os.path.join(os.path.dirname(__file__), 'config.ini'))
         self.printer_status_entity: str = PrintDetect.get_config_value(config=config, group='printer.entities', 
                                                                 id='BinaryIsPrintingSensor', type=str)
         self.printer_printing_state: str = PrintDetect.get_config_value(config=config, group='printer.entities', 
@@ -75,6 +94,26 @@ class PrintDetect(ad.ADBase):
                                                                 id='Threshold', type=float)
         self.detection_nms: float = PrintDetect.get_config_value(config=config, group='model.detection', 
                                                                 id='NMS', type=float)
+        print(f"DEBUG: {self.printer_status_entity}, {self.printer_printing_state}, {self.printer_camera_entity}, {self.printer_stop_button_entity}, {self.detection_interval}, {self.print_termination_time}, {self.detection_threshold}, {self.detection_nms}")
+        
+    def get_camera_snapshot(self):
+        """
+        Get the camera snapshot and decode it into an image.
+
+        Returns:
+            The decoded image.
+        """
+        url = f"{self.hass_hostname}/media/local/snapshot.jpg"
+        headers = {
+            'Authorization': f'Bearer {self.hass_token}'
+        }
+        response = requests.request("GET", url, headers=headers, data={}, stream=True)
+        if response.status_code != 200:
+            self.adapi.log(f"Error getting camera snapshot: {response.status_code}")
+            return None
+        arr = np.asarray(bytearray(response.raw.read()), dtype=np.uint8)
+        cv2_img = cv2.imdecode(arr, -1)
+        return cv2_img
         
         
     def run_every_c(self, cb_args):
@@ -86,13 +125,16 @@ class PrintDetect(ad.ADBase):
         if self.printer_status.is_state(self.printer_printing_state) and self.cancel_handle == None:
             # if the printer is on, take a snapshot and run the detection model
             self.print_camera.call_service("snapshot", filename="/media/snapshot.jpg")
-            custom_image_bgr = cv2.imread("/shared_media/snapshot.jpg")
+            custom_image_bgr = self.get_camera_snapshot()
+            if custom_image_bgr is None:
+                self.adapi.log("Failed to get camera snapshot, skipping detection for this cycle.")
+                return None
             detections = detect(self.net_main_1, custom_image_bgr, thresh=self.detection_threshold, nms=self.detection_nms)
             detection_count = len(detections)
             self.adapi.log(f"Detected {detection_count} issues")
             # if an issue is detected, send a notification
             if detection_count > 1:
-                self.adapi.call_service("notify/notify", message="An issue with your 3D print has been detected. The print will be stopped if not dismissed.", 
+                self.adapi.call_service("notify/notify", message=f"An issue with your 3D print has been detected. The print will be stopped in {self.print_termination_time} seconds if not dismissed.", 
                                         title="3D Print Issue Detected",
                                         data={
                                             "image": "/media/local/snapshot.jpg",
