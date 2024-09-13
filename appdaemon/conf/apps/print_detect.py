@@ -24,6 +24,8 @@ class PrintDetect(ad.ADBase):
         self.model_meta = "/conf/model/model.meta"
         self.model_weights = "/conf/model/model-weights-5a6b1be1fa.onnx"
         
+        self.warmup_complete = False # flag to check if the printer has warmed up
+        
         # load all configuration file variables
         self.load_config()
         self.load_secret_values()
@@ -167,13 +169,16 @@ class PrintDetect(ad.ADBase):
         """
         Notify the user when the printer is almost warmed up
         """
-        if self.extruder_temp_sensor.state < 0.9 * self.extruder_target_temp_sensor.state:
+        if float(self.extruder_temp_sensor.state) > (0.9 * float(self.extruder_target_temp_sensor.state)) and float(self.extruder_temp_sensor.state) < (0.96 * float(self.extruder_target_temp_sensor.state)) and self.warmup_complete == False:
+            self.warmup_complete = True
             self.adapi.call_service("notify/notify", 
                                     message="The 3D printer has almost warmed up. Remove any excess filament before your print starts.", 
                                     title="3D Printer Warming Up",
                                     data={
                                         "image": "/media/local/snapshot.jpg"
                                     })
+        if float(self.extruder_temp_sensor.state) > (0.96 * float(self.extruder_target_temp_sensor.state)):
+            self.warmup_complete = False
         
     def extra_notifications_router(self):
         """
